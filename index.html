@@ -1,0 +1,204 @@
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>My first canvas</title>
+    <script type="text/javascript">
+        // brick dimensions
+        var W = 75;
+        var H = 20;
+
+        // pallet dimensions
+        var Wp = 100;
+        var Hp = 10;
+
+        // ball dimensions
+        var Wb = 8;
+        var Hb = 8;
+
+        // ball and pallet velocity
+        var v = [-2, -2];
+        var vP = 5; // horizontal speed if moving
+
+        // track key movements
+        var keyDown = {};
+        var left = 37;
+        var right = 39;
+        window.onkeydown = function(e) { keyDown[e.keyCode] = true; }
+        window.onkeyup = function(e) { keyDown[e.keyCode] = false; }
+
+        // track touch events
+        var touchDown = false;
+        var touchDirection = -1; // -1 = left, +1 = right
+        window.ontouchstart = function(e) { 
+            touchDown = true;
+            if ( e.touches[0].pageX < window.innerWidth / 2 ) {
+                touchDirection = -1;
+            } else {
+                touchDirection = +1;
+            }
+        }
+        window.ontouchend = function(e) {
+            touchDown = false;
+        }
+
+
+
+        function initalizeWorld() {
+            var world = {
+                bricks: [],  // array of [x, y]
+                ball: [300, 400],    // x, y
+                pallet: [250 - Wp / 2, 480],  // x, y
+            };
+
+            var Ncol = 6;
+            var Nrow = 3;
+            var marginTop = 100;
+            var marginLeft = 20 + W / 2;
+
+            for (i = 0; i < Nrow; i++) {
+                for (j = 0; j < Ncol; j++) {
+                    world.bricks.push([marginLeft + j * W, marginTop + i * H]);
+                }
+            }
+
+            return world;
+        };
+
+        function deleteBrick(world, brick) {
+            var index = world.bricks.indexOf(brick);
+            if (index > -1) {
+                world.bricks.splice(index, 1);
+            }
+        }
+
+        function drawBrick(ctx, x, y) {
+            ctx.fillStyle = 'orange';
+            ctx.strokeStyle = 'white';
+            ctx.fillRect(x - W / 2, y - H / 2, W, H);
+            ctx.strokeRect(x - W / 2, y - H / 2, W, H);
+        }
+
+        function drawPallet(ctx, x, y) {
+            ctx.fillStyle = 'gray';
+            ctx.fillRect(x - Wp / 2, y - Hp / 2, Wp, Hp);
+        }
+
+        function drawBall(ctx, x, y) {
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(x - Wb / 2, y - Hb / 2, Wb, Hb);
+        }
+
+        function drawWorld(ctx, canvas, world) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (var brick of world.bricks) {
+                drawBrick(ctx, brick[0], brick[1]);
+            }
+            drawBall(ctx, world.ball[0], world.ball[1]);
+            drawPallet(ctx, world.pallet[0], world.pallet[1]);
+        };
+
+        function step(world, canvas) {
+            // Return false if game is over, true otherwise
+
+            // POSITION UPDATES
+            world.ball[0] += v[0];
+            world.ball[1] += v[1];
+
+            if ( keyDown[left] || touchDown && touchDirection < 0 ) {
+                world.pallet[0] = Math.max(Wp / 2, world.pallet[0] - vP);
+            } else if ( keyDown[right] || touchDown && touchDirection > 0 ) {
+                world.pallet[0] = Math.min(canvas.width - Wp / 2, world.pallet[0] + vP);
+            }
+
+            // COLLISION DETECTION
+            // 1. walls
+            x = world.ball[0];
+            y = world.ball[1];
+            rB = Wb / 2;  // Assume ball is square
+            if (x - rB <= 0 || x + rB >= canvas.width) {
+                v[0] = -v[0];
+            }
+            if (y - rB <= 0) {
+                v[1] = -v[1];
+            } else if ( y + rB >= canvas.height ) {
+                return false;
+            }
+
+            // 2. pallet
+            if ( y + rB >= world.pallet[1] - Hp / 2 && 
+                 x - rB >= world.pallet[0] - Wp / 2 && x + rB <= world.pallet[0] + Wp / 2 &&
+                 v[1] > 0) {
+                v[1] = -v[1];
+            }
+
+            // 3. bricks
+            for (var b of world.bricks) {
+                // must be within a bounding box equivalent to brick perimeter grown by rB / 2
+                if (x >= b[0] - (W + rB) / 2 && x <= b[0] + (W + rB) / 2 &&
+                    y >= b[1] - (H + rB) / 2 && y <= b[1] + (H + rB) / 2) {
+
+                    // direction of hit:
+                    // top or bottom: centre of ball is either above or below brick
+                    if (y <= b[1] - H / 2 || y >= b[1] + H / 2) {
+                        v[1] = -v[1];
+                    }
+
+                    // left or right: centre of ball is either further left than left wall,
+                    // or further right than right wall
+                    if (x <= b[0] - W / 2 || x >= b[0] + W / 2) {
+                        v[0] = -v[0];
+                    }
+
+                    deleteBrick(world, b);
+                    break;
+                }
+            }
+            return true;
+        };
+
+        function draw() {
+            var feedback = document.getElementById('feedback');
+            var canvas = document.getElementById('theCanvas');
+            if (canvas.getContext) {
+                var ctx = canvas.getContext('2d');
+                var world = initalizeWorld();
+
+                var framerate = 100;
+
+                function animate() {
+                    var ongoing = step(world, canvas);
+                    drawWorld(ctx, canvas, world);
+                    if ( ongoing )  {
+                        if ( world.bricks.length > 0 ) {
+                            setTimeout(animate, 1 / framerate * 1000);
+                        } else {
+                            feedback.textContent = "You win!";
+                        }
+                    } else {
+                        feedback.textContent = "Game over!";
+                    }
+                }
+                animate();
+            }
+        }
+    </script>
+    <style type="text/css">
+        body {
+            text-align: center;
+        }
+
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+
+<body onload="draw();">
+    <canvas id="theCanvas" width="500" height="500">
+        This is my first canvas. If you can't see it, please use Chrome, Safari, or Firefox.
+    </canvas>
+    <p id="feedback">Click inside the window to enable keyboard interaction.</p>
+</body>
+
+</html>
